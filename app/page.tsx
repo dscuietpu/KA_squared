@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import SOSList from '@/components/SOSList';
 import CrisisGPT from '@/components/CrisisGPT';
 import FarmPanel from '@/components/FarmPanel';
+import SOSSimulator from '@/components/SOSSimulator';
 import { mockCrisisState } from '@/lib/mockData';
 import { SOSCluster } from '@/lib/types';
 
@@ -13,9 +14,8 @@ type Tab = 'coordinator' | 'rescue' | 'farm';
 
 export default function Dashboard() {
   const [tab, setTab] = useState<Tab>('coordinator');
-  const [selectedCluster, setSelectedCluster] = useState<SOSCluster | null>(
-    mockCrisisState.clusters[0]
-  );
+  const [selectedCluster, setSelectedCluster] = useState<SOSCluster | null>(null);
+  const [showSOS, setShowSOS] = useState(false);
   const crisisState = mockCrisisState;
 
   return (
@@ -132,7 +132,7 @@ export default function Dashboard() {
             onClusterClick={setSelectedCluster}
           />
 
-          {/* Bottom-left stats — pushed right so no overlap */}
+          {/* Bottom-left stats */}
           <div style={{
             position: 'absolute',
             bottom: '20px',
@@ -175,6 +175,7 @@ export default function Dashboard() {
           overflow: 'hidden',
         }}>
 
+          {/* COORDINATOR TAB */}
           {tab === 'coordinator' && (
             <>
               <SOSList
@@ -189,6 +190,7 @@ export default function Dashboard() {
             </>
           )}
 
+          {/* RESCUE TAB */}
           {tab === 'rescue' && (
             <div style={{ padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ fontSize: '10px', color: '#475569', letterSpacing: '0.12em', marginBottom: '4px' }}>
@@ -239,9 +241,105 @@ export default function Dashboard() {
             </div>
           )}
 
-          {tab === 'farm' && <FarmPanel farms={crisisState.farms} />}
+          {/* FARM TAB */}
+          {tab === 'farm' && (
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <FarmPanel farms={crisisState.farms} />
+              <button
+                onClick={() => setShowSOS(true)}
+                style={{
+                  margin: '0 14px 14px',
+                  padding: '10px',
+                  background: 'rgba(37,211,102,0.1)',
+                  border: '1px solid rgba(37,211,102,0.35)',
+                  borderRadius: '8px',
+                  color: '#25d366',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  fontFamily: 'inherit',
+                  cursor: 'pointer',
+                  letterSpacing: '0.06em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span style={{ fontSize: '14px' }}>📱</span>
+                SIMULATE WHATSAPP SOS
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* WHATSAPP SOS MODAL */}
+      {showSOS && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setShowSOS(false); }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backdropFilter: 'blur(6px)',
+          }}
+        >
+          <div style={{
+            width: '400px',
+            background: '#0a0f1e',
+            border: '1px solid rgba(37,211,102,0.3)',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            boxShadow: '0 0 60px rgba(37,211,102,0.12), 0 0 120px rgba(0,0,0,0.8)',
+          }}>
+            {/* Modal header */}
+            <div style={{
+              background: 'rgba(37,211,102,0.12)',
+              padding: '14px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              borderBottom: '1px solid rgba(37,211,102,0.2)',
+            }}>
+              <div style={{
+                width: '38px', height: '38px', borderRadius: '50%',
+                background: 'rgba(37,211,102,0.2)',
+                border: '1px solid rgba(37,211,102,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '18px',
+              }}>📱</div>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#25d366' }}>
+                  WhatsApp SOS Simulator
+                </div>
+                <div style={{ fontSize: '10px', color: '#475569' }}>
+                  GeoShield Farmer Helpline · Chamoli District
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSOS(false)}
+                style={{
+                  marginLeft: 'auto',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#475569',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  lineHeight: 1,
+                  padding: '4px',
+                }}
+              >✕</button>
+            </div>
+
+            {/* Simulator content */}
+            <SOSSimulator />
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes livepulse {
