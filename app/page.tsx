@@ -6,7 +6,7 @@ import CrisisGPT from '@/components/CrisisGPT';
 import FarmPanel from '@/components/FarmPanel';
 import SOSSimulator from '@/components/SOSSimulator';
 import { mockCrisisState } from '@/lib/mockData';
-import { SOSCluster } from '@/lib/types';
+import { SOSCluster, CrisisState } from '@/lib/types';
 
 const Map = dynamic(() => import('@/components/Map'), { ssr: false });
 
@@ -16,7 +16,74 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>('coordinator');
   const [selectedCluster, setSelectedCluster] = useState<SOSCluster | null>(null);
   const [showSOS, setShowSOS] = useState(false);
-  const crisisState = mockCrisisState;
+  const [crisisState, setCrisisState] = useState<CrisisState>(mockCrisisState);
+
+  const priorityMap: Record<string, 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'> = {
+    CRITICAL: 'CRITICAL', HIGH: 'HIGH', MEDIUM: 'MEDIUM', LOW: 'LOW',
+  };
+  const priorityRank: Record<string, number> = {
+    CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1,
+  };
+
+  function onSOSParsed(message: string, parsed: {
+    severity: string;
+    type: string;
+    summary: string;
+    peopleCount: number | null;
+    needsImmediateRescue: boolean;
+  }) {
+    const newLat = 30.395 + (Math.random() - 0.5) * 0.05;
+    const newLng = 79.350 + (Math.random() - 0.5) * 0.05;
+    const incomingPriority = priorityMap[parsed.severity] || 'HIGH';
+    const THRESHOLD = 0.03;
+
+    const nearbyCluster = crisisState.clusters.find(c =>
+      Math.abs(c.lat - newLat) < THRESHOLD &&
+      Math.abs(c.lng - newLng) < THRESHOLD
+    );
+
+    if (nearbyCluster) {
+      const updated = {
+        ...nearbyCluster,
+        count: nearbyCluster.count + (parsed.peopleCount || 1),
+        priority: priorityRank[incomingPriority] > priorityRank[nearbyCluster.priority]
+          ? incomingPriority : nearbyCluster.priority,
+        message: message,
+        parsed: `${nearbyCluster.parsed} · ${parsed.summary}`,
+        timestamp: 'just now',
+      };
+      setCrisisState((prev) => ({
+        ...prev,
+        clusters: prev.clusters.map(c => c.id === nearbyCluster.id ? updated : c),
+      }));
+      setSelectedCluster(updated);
+    } else {
+      const newCluster: SOSCluster = {
+        id: `W${crisisState.clusters.length + 1}`,
+        location: 'WhatsApp SOS — Chamoli',
+        lat: newLat,
+        lng: newLng,
+        count: parsed.peopleCount || 1,
+        priority: incomingPriority,
+        message: message,
+        parsed: parsed.summary,
+        timestamp: 'just now',
+      };
+      setCrisisState((prev) => ({
+        ...prev,
+        clusters: [newCluster, ...prev.clusters],
+      }));
+      setSelectedCluster(newCluster);
+    }
+
+    setShowSOS(false);
+    setTab('coordinator');
+  }
+
+  const totalSOS = crisisState.clusters.reduce((sum, c) => sum + c.count, 0);
+  const criticalCount = crisisState.clusters.filter(c => c.priority === 'CRITICAL').length;
+  const highCount = crisisState.clusters.filter(c => c.priority === 'HIGH').length;
+  const personsAtRisk = crisisState.clusters.reduce((sum, c) => sum + c.count * 80, 0);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden" style={{
@@ -35,7 +102,6 @@ export default function Dashboard() {
         gap: '16px',
         flexShrink: 0,
       }}>
-        {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: '28px', height: '28px' }}>
             <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -58,20 +124,17 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Divider */}
         <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)' }} />
 
-        {/* Location */}
         <div style={{ fontSize: '11px', color: '#64748b', letterSpacing: '0.05em' }}>
           <span style={{ color: '#94a3b8' }}>DISTRICT</span>
           {' · '}
           <span style={{ color: '#e2e8f0' }}>Chamoli, Uttarakhand</span>
         </div>
 
-        {/* Live metrics */}
         <div style={{ display: 'flex', gap: '20px', marginLeft: '16px' }}>
           {[
-            { label: 'SOS', value: '12', color: '#ef4444' },
+            { label: 'SOS', value: String(totalSOS), color: '#ef4444' },
             { label: 'TEAMS', value: '3', color: '#3b82f6' },
             { label: 'RIVER', value: '3.2m', color: '#f97316' },
             { label: 'RAIN', value: '78mm/hr', color: '#f97316' },
@@ -83,7 +146,6 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
           {(['coordinator', 'rescue', 'farm'] as Tab[]).map((t) => (
             <button
@@ -109,7 +171,6 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Live indicator */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
           <div style={{
             width: '7px', height: '7px', borderRadius: '50%',
@@ -124,15 +185,16 @@ export default function Dashboard() {
       {/* BODY */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-        {/* MAP */}
         <div style={{ flex: 1, position: 'relative' }}>
           <Map
             crisisState={crisisState}
             selectedCluster={selectedCluster}
-            onClusterClick={setSelectedCluster}
+            onClusterClick={(c) => {
+              setSelectedCluster(c);
+              setTab('coordinator');
+            }}
           />
 
-          {/* Bottom-left stats */}
           <div style={{
             position: 'absolute',
             bottom: '20px',
@@ -142,9 +204,9 @@ export default function Dashboard() {
             gap: '8px',
           }}>
             {[
-              { label: 'CRITICAL ZONES', value: '1', color: '#ef4444' },
-              { label: 'HIGH ZONES', value: '2', color: '#f97316' },
-              { label: 'PERSONS AT RISK', value: '847', color: '#fbbf24' },
+              { label: 'CRITICAL ZONES', value: String(criticalCount), color: '#ef4444' },
+              { label: 'HIGH ZONES', value: String(highCount), color: '#f97316' },
+              { label: 'PERSONS AT RISK', value: String(personsAtRisk), color: '#fbbf24' },
             ].map(s => (
               <div key={s.label} style={{
                 background: 'rgba(8,12,20,0.92)',
@@ -175,7 +237,6 @@ export default function Dashboard() {
           overflow: 'hidden',
         }}>
 
-          {/* COORDINATOR TAB */}
           {tab === 'coordinator' && (
             <>
               <SOSList
@@ -190,7 +251,6 @@ export default function Dashboard() {
             </>
           )}
 
-          {/* RESCUE TAB */}
           {tab === 'rescue' && (
             <div style={{ padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ fontSize: '10px', color: '#475569', letterSpacing: '0.12em', marginBottom: '4px' }}>
@@ -241,7 +301,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* FARM TAB */}
           {tab === 'farm' && (
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               <FarmPanel farms={crisisState.farms} />
@@ -249,23 +308,32 @@ export default function Dashboard() {
                 onClick={() => setShowSOS(true)}
                 style={{
                   margin: '0 14px 14px',
-                  padding: '10px',
-                  background: 'rgba(37,211,102,0.1)',
-                  border: '1px solid rgba(37,211,102,0.35)',
+                  padding: '10px 16px',
+                  background: 'rgba(37,211,102,0.08)',
+                  border: '1px solid rgba(37,211,102,0.3)',
                   borderRadius: '8px',
                   color: '#25d366',
                   fontSize: '11px',
                   fontWeight: 700,
                   fontFamily: 'inherit',
                   cursor: 'pointer',
-                  letterSpacing: '0.06em',
+                  letterSpacing: '0.08em',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '8px',
                 }}
               >
-                <span style={{ fontSize: '14px' }}>📱</span>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <rect x="1" y="1" width="12" height="12" rx="3" stroke="#25d366" strokeWidth="1.2"/>
+                  <rect x="3" y="3" width="3" height="3" rx="0.5" fill="#25d366"/>
+                  <rect x="8" y="3" width="3" height="3" rx="0.5" fill="#25d366"/>
+                  <rect x="3" y="8" width="3" height="3" rx="0.5" fill="#25d366"/>
+                  <rect x="8" y="8" width="1.5" height="1.5" fill="#25d366"/>
+                  <rect x="10" y="8" width="1.5" height="1.5" fill="#25d366"/>
+                  <rect x="8" y="10" width="1.5" height="1.5" fill="#25d366"/>
+                  <rect x="10" y="10" width="1.5" height="1.5" fill="#25d366"/>
+                </svg>
                 SIMULATE WHATSAPP SOS
               </button>
             </div>
@@ -294,9 +362,8 @@ export default function Dashboard() {
             border: '1px solid rgba(37,211,102,0.3)',
             borderRadius: '16px',
             overflow: 'hidden',
-            boxShadow: '0 0 60px rgba(37,211,102,0.12), 0 0 120px rgba(0,0,0,0.8)',
+            boxShadow: '0 0 60px rgba(37,211,102,0.12)',
           }}>
-            {/* Modal header */}
             <div style={{
               background: 'rgba(37,211,102,0.12)',
               padding: '14px 16px',
@@ -306,12 +373,22 @@ export default function Dashboard() {
               borderBottom: '1px solid rgba(37,211,102,0.2)',
             }}>
               <div style={{
-                width: '38px', height: '38px', borderRadius: '50%',
-                background: 'rgba(37,211,102,0.2)',
-                border: '1px solid rgba(37,211,102,0.4)',
+                width: '38px', height: '38px', borderRadius: '8px',
+                background: 'rgba(37,211,102,0.15)',
+                border: '1px solid rgba(37,211,102,0.3)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '18px',
-              }}>📱</div>
+              }}>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <rect x="2" y="2" width="16" height="16" rx="4" stroke="#25d366" strokeWidth="1.5"/>
+                  <rect x="5" y="5" width="4" height="4" rx="1" fill="#25d366"/>
+                  <rect x="11" y="5" width="4" height="4" rx="1" fill="#25d366"/>
+                  <rect x="5" y="11" width="4" height="4" rx="1" fill="#25d366"/>
+                  <rect x="11" y="11" width="2" height="2" fill="#25d366"/>
+                  <rect x="13" y="11" width="2" height="2" fill="#25d366"/>
+                  <rect x="11" y="13" width="2" height="2" fill="#25d366"/>
+                  <rect x="13" y="13" width="2" height="2" fill="#25d366"/>
+                </svg>
+              </div>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#25d366' }}>
                   WhatsApp SOS Simulator
@@ -334,9 +411,7 @@ export default function Dashboard() {
                 }}
               >✕</button>
             </div>
-
-            {/* Simulator content */}
-            <SOSSimulator />
+            <SOSSimulator onParsed={onSOSParsed} />
           </div>
         </div>
       )}
